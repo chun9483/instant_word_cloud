@@ -743,7 +743,7 @@
       svg.innerHTML = '';
       entries.forEach(e => {
         // 規則：同樣的答案每多重複出現一次，字體加大 5[cite: 1]
-        const fs = 20 + (e.count - 1) * 3;
+        const fs = 20 + (e.count - 1) * 2;
 
         const pos = tryPlace(e.original, fs);
         if (!pos) return;
