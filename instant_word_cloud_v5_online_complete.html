@@ -179,7 +179,7 @@
       left: 50%;
       transform: translateX(-50%);
       font-family: var(--font-round);
-      font-size: 40px; /* 這裡調整大小，建議從 32px 開始試試看 */
+      font-size: 35px; /* 這裡調整大小，建議從 32px 開始試試看 */
       font-weight: 700;
       letter-spacing: 2px;
       text-transform: uppercase;
@@ -743,7 +743,7 @@
       svg.innerHTML = '';
       entries.forEach(e => {
         // 規則：同樣的答案每多重複出現一次，字體加大 5[cite: 1]
-        const fs = 25 + (e.count - 1) * 10;
+        const fs = 20 + (e.count - 1) * 10;
 
         const pos = tryPlace(e.original, fs);
         if (!pos) return;
