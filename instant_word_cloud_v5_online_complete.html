@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Word Cloud - 圓體雲端同步版</title>
+
+  <!-- 引入 Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.1.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.1.1/firebase-database-compat.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- 引入繁體中文圓體風格字體 -->
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700&family=Syne:wght@800&display=swap"
+    rel="stylesheet">
+  <style>
+    /* ========== 保留所有原本的 CSS ========== */
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #0a0a0f;
+      --surface: #13131a;
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #f0f0f5;
+      --muted: rgba(240, 240, 245, 0.4);
+      --accent: #c8ff57;
+      --accent-dark: #8fb83a;
+      /* 設定圓體字體 */
+      --font-round: 'Noto Sans TC', sans-serif;
+    }
+
+    body {
+      font-family: var(--font-round);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ─── ROUTING ─── */
+    .page {
+      display: none;
+      min-height: 100vh;
+    }
+
+    .page.active {
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ─── HOST PAGE ─── */
+    #host-page {
+      background: var(--bg);
+      position: relative;
+    }
+
+    .host-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 28px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      gap: 16px;
+    }
+
+    .logo {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 17px;
+      letter-spacing: -0.3px;
+      color: var(--accent);
+    }
+
+    .topic-input-wrap {
+      flex: 1;
+      max-width: 480px;
+    }
+
+    .topic-input-wrap input {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 14px;
+      font-family: var(--font-round);
+      color: var(--text);
+      outline: none;
+      transition: border-color .2s;
+    }
+
+    .topic-input-wrap input::placeholder {
+      color: var(--muted);
+    }
+
+    .topic-input-wrap input:focus {
+      border-color: rgba(200, 255, 87, 0.4);
+    }
+
+    .host-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .btn {
+      font-family: var(--font-round);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 7px 16px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: all .15s;
+      background: transparent;
+      color: var(--text);
+    }
+
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.07);
+    }
+
+    .btn.accent {
+      background: var(--accent);
+      color: #0a0a0f;
+      border-color: var(--accent);
+      font-weight: 700;
+    }
+
+    .btn.accent:hover {
+      background: #d4ff70;
+    }
+
+    .btn.danger {
+      color: #ff6b6b;
+      border-color: rgba(255, 107, 107, 0.3);
+    }
+
+    .btn.danger:hover {
+      background: rgba(255, 107, 107, 0.1);
+    }
+
+    .stats-strip {
+      display: flex;
+      gap: 24px;
+      padding: 10px 28px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .stat {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .stat strong {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    #cloud-area {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      min-height: 400px;
+    }
+
+    .topic-overlay {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: var(--font-round);
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: rgba(200, 255, 87, 0.5);
+      pointer-events: none;
+      white-space: nowrap;
+      z-index: 2;
+    }
+
+    #cloud-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .empty-hint {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      pointer-events: none;
+    }
+
+    .empty-hint .big {
+      font-family: 'Syne', sans-serif;
+      font-size: 42px;
+      font-weight: 800;
+      color: rgba(255, 255, 255, 0.04);
+    }
+
+    .empty-hint .sub {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    /* ─── SUBMIT PAGE ─── */
+    #submit-page {
+      background: #f8f7f4;
+      color: #1a1a20;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+
+    .submit-card {
+      background: #fff;
+      border-radius: 20px;
+      border: 1px solid rgba(0, 0, 0, 0.07);
+      padding: 40px 36px 32px;
+      width: 100%;
+      max-width: 440px;
+      box-shadow: 0 4px 40px rgba(0, 0, 0, 0.06);
+    }
+
+    .submit-card .logo-s {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 13px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #888;
+      margin-bottom: 24px;
+    }
+
+    #submit-topic {
+      font-family: var(--font-round);
+      font-size: 24px;
+      font-weight: 700;
+      color: #1a1a20;
+      line-height: 1.3;
+      margin-bottom: 28px;
+      min-height: 32px;
+    }
+
+    .s-input-wrap {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .s-input-wrap input {
+      flex: 1;
+      border: 1.5px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 11px 16px;
+      font-size: 15px;
+      font-family: var(--font-round);
+      outline: none;
+      color: #1a1a20;
+      background: #fafafa;
+      transition: border-color .2s, background .2s;
+    }
+
+    .s-input-wrap input:focus {
+      border-color: #1a1a20;
+      background: #fff;
+    }
+
+    .s-input-wrap input::placeholder {
+      color: #aaa;
+    }
+
+    .s-submit-btn {
+      background: #1a1a20;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 11px 20px;
+      font-family: var(--font-round);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+      white-space: nowrap;
+    }
+
+    .s-submit-btn:hover {
+      opacity: .85;
+    }
+
+    .s-submit-btn:active {
+      transform: scale(0.97);
+    }
+
+    .submitted-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      min-height: 34px;
+      margin-bottom: 8px;
+    }
+
+    .s-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      animation: tagIn .25s cubic-bezier(.34, 1.56, .64, 1);
+    }
+
+    @keyframes tagIn {
+      from {
+        opacity: 0;
+        transform: scale(0.7) translateY(6px);
+      }
+
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    .submit-hint {
+      font-size: 12px;
+      color: #bbb;
+      margin-top: 6px;
+      text-align: center;
+    }
+
+    .submit-count {
+      font-size: 12px;
+      color: #888;
+      margin-top: 18px;
+      padding-top: 16px;
+      border-top: 1px solid #f0f0f0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .live-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #22c55e;
+      display: inline-block;
+      margin-right: 5px;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: .4
+      }
+    }
+
+    /* ─── QR MODAL ─── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.open {
+      display: flex;
+    }
+
+    .modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      text-align: center;
+      max-width: 320px;
+      width: 90%;
+    }
+
+    .modal-box h3 {
+      font-family: var(--font-round);
+      font-size: 18px;
+      margin-bottom: 6px;
+    }
+
+    .modal-box p {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+
+    #qr-box {
+      background: #fff;
+      padding: 12px;
+      border-radius: 10px;
+      display: inline-block;
+      margin-bottom: 16px;
+    }
+
+    .url-copy {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 11px;
+      color: var(--muted);
+      word-break: break-all;
+      margin-bottom: 16px;
+      cursor: pointer;
+      transition: background .15s;
+    }
+
+    .url-copy:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .copied-flash {
+      color: var(--accent) !important;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ══════════ HOST PAGE ══════════ -->
+  <div class="page" id="host-page">
+    <header class="host-header">
+      <span class="logo">WORDCLOUD</span>
+      <div class="topic-input-wrap">
+        <input id="topic-field" type="text" placeholder="設定參與者的問題或主題..." oninput="saveTopic()">
+      </div>
+      <div class="host-actions">
+        <button class="btn" onclick="openQR()">QR / 分享 ↗</button>
+        <button class="btn danger" onclick="clearAll()">清空</button>
+      </div>
+    </header>
+    <div class="stats-strip">
+      <div class="stat">總回答數: <strong id="stat-total">0</strong></div>
+      <div class="stat">不重複詞彙: <strong id="stat-unique">0</strong></div>
+    </div>
+    <div id="cloud-area">
+      <div class="topic-overlay" id="topic-overlay"></div>
+      <svg id="cloud-svg" viewBox="0 0 900 520" preserveAspectRatio="xMidYMid meet"></svg>
+      <div class="empty-hint" id="empty-hint">
+        <div class="big">等待中</div>
+        <div class="sub">參與者可以透過 QR Code 或分享連結提交答案</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ SUBMIT PAGE ══════════ -->
+  <div class="page" id="submit-page">
+    <div class="submit-card">
+      <div class="logo-s">即時文字雲</div>
+      <div id="submit-topic">你在想什麼？</div>
+      <div class="s-input-wrap">
+        <input id="answer-input" type="text" maxlength="40" placeholder="輸入你的答案..."
+          onkeydown="if(event.key==='Enter')doSubmit()">
+        <button class="s-submit-btn" onclick="doSubmit()">傳送</button>
+      </div>
+      <div class="submitted-tags" id="submitted-tags"></div>
+      <div class="submit-hint">無限制 — 可重複提交多個答案</div>
+      <div class="submit-count">
+        <span><span class="live-dot"></span>即時回應: <strong id="live-count">0</strong></span>
+        <!--<a href="#host" onclick="navigate('host')" 
+          style="font-size:12px;color:#bbb;text-decoration:none;cursor:pointer">主持人視角 →</a>-->
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ QR MODAL ══════════ -->
+  <div class="modal-overlay" id="qr-modal" onclick="if(event.target===this)closeQR()">
+    <div class="modal-box">
+      <h3>分享給參與者</h3>
+      <p>掃描後將直接進入答案填寫頁面</p>
+      <div id="qr-box"></div>
+      <div class="url-copy" id="url-copy-box" onclick="copyURL()">載入中...</div>
+      <button class="btn" onclick="closeQR()" style="width:100%">關閉</button>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <script>
+    /* 🚨 請在這裡貼上你的 Firebase Config 金鑰 🚨 */
+    const firebaseConfig = {
+      apiKey: "AIzaSyBLXKShZp6hudhUEk3YVYJzPdEwXrtHqwY",
+      authDomain: "instant-word-cloud.firebaseapp.com",
+      databaseURL: "https://instant-word-cloud-default-rtdb.firebaseio.com",
+      projectId: "instant-word-cloud",
+      storageBucket: "instant-word-cloud.firebasestorage.app",
+      messagingSenderId: "811810694579",
+      appId: "1:811810694579:web:8ead0cf3556530d3a317c6",
+      measurementId: "G-L060T7PDRK"
+    };
+
+    // 初始化 Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const DB_PATH = 'wordcloud_v3_data';
+
+    // 本地狀態 (用來暫存從雲端抓下來的資料)
+    let words = {};
+    let topic = '';
+    let mySubmissions = [];
+
+    // 顏色計算 (維持原樣)
+    const PALETTE = [
+      '#FF4E6A', '#FF8C42', '#FFD166', '#A8E063', '#06D6A0',
+      '#4ECDC4', '#45B7D1', '#6C63FF', '#C77DFF', '#FF6B9D',
+      '#F72585', '#FFBE0B', '#3A86FF', '#8338EC', '#FB5607'
+    ];
+    function wordColor(w) {
+      let h = 5381;
+      for (let i = 0; i < w.length; i++) h = ((h << 5) + h) ^ w.charCodeAt(i);
+      return PALETTE[Math.abs(h) % PALETTE.length];
+    }
+
+    // 路由控制 (維持原樣)
+    function getRoute() {
+      const h = location.hash.replace('#', '');
+      return h === 'host' ? 'host' : 'submit';
+    }
+    function navigate(route) {
+      location.hash = route;
+      applyRoute(route);
+    }
+    function applyRoute(route) {
+      document.getElementById('host-page').classList.toggle('active', route === 'host');
+      document.getElementById('submit-page').classList.toggle('active', route === 'submit');
+      if (route === 'host') renderCloud();
+    }
+    window.addEventListener('hashchange', () => applyRoute(getRoute()));
+
+    // ==========================================
+    // Firebase 核心邏輯取代 LocalStorage
+    // ==========================================
+
+    // 1. 監聽雲端資料變更 (自動更新畫面)
+    db.ref(DB_PATH).on('value', (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        words = data.words || {};
+        topic = data.topic || '';
+      } else {
+        words = {};
+        topic = '';
+      }
+
+      applyTopic();
+      updateStats();
+      updateLiveCount();
+
+      if (getRoute() === 'host') {
+        renderCloud();
+      }
+    });
+
+    // 2. 主持人設定題目 (寫入雲端)
+    function saveTopic() {
+      const newTopic = document.getElementById('topic-field').value;
+      db.ref(DB_PATH + '/topic').set(newTopic);
+    }
+
+    function applyTopic() {
+      const tf = document.getElementById('topic-field');
+      if (tf && tf.value !== topic) tf.value = topic; // 避免輸入中途被覆蓋
+      const to = document.getElementById('topic-overlay');
+      if (to) to.textContent = topic || '';
+      const st = document.getElementById('submit-topic');
+      if (st) st.textContent = topic || '你在想什麼？';
+    }
+
+    // 3. 參與者提交答案 (寫入雲端)
+    function doSubmit() {
+      const inp = document.getElementById('answer-input');
+      const raw = inp.value.trim();
+      if (!raw) return;
+
+      const key = raw.toLowerCase();
+      // 計算雲端上目前的次數
+      const currentCount = words[key] ? words[key].count : 0;
+
+      // 更新雲端特定詞彙
+      db.ref(DB_PATH + '/words/' + key).set({
+        original: raw,
+        count: currentCount + 1
+      });
+
+      // 本地個人紀錄 (用來顯示個人標籤)
+      mySubmissions.push(key);
+      inp.value = '';
+      inp.focus();
+      renderTags();
+    }
+
+    // 4. 主持人清空資料 (刪除雲端資料)
+    function clearAll() {
+      if (!confirm('確定要清空所有回應嗎？')) return;
+      db.ref(DB_PATH).remove();
+      mySubmissions = [];
+      renderTags();
+    }
+
+    // ==========================================
+    // 以下皆為原本的 UI 與演算法 (維持原樣)
+    // ==========================================
+
+    function renderTags() {
+      const c = document.getElementById('submitted-tags');
+      if (!c) return;
+      c.innerHTML = '';
+      const seen = new Set();
+      [...mySubmissions].reverse().forEach(k => {
+        if (seen.has(k)) return;
+        seen.add(k);
+        const col = wordColor(k);
+        const t = document.createElement('span');
+        t.className = 's-tag';
+        t.style.background = col + '20';
+        t.style.color = col;
+        t.style.border = `1px solid ${col}40`;
+        t.textContent = words[k] ? words[k].original : k;
+        c.appendChild(t);
+      });
+    }
+
+    function updateLiveCount() {
+      const total = Object.values(words).reduce((s, e) => s + e.count, 0);
+      const el = document.getElementById('live-count');
+      if (el) el.textContent = total;
+    }
+
+    function updateStats() {
+      const entries = Object.values(words);
+      const total = entries.reduce((s, e) => s + e.count, 0);
+      const tEl = document.getElementById('stat-total');
+      const uEl = document.getElementById('stat-unique');
+      if (tEl) tEl.textContent = total;
+      if (uEl) uEl.textContent = entries.length;
+    }
+
+    // 原本的螺旋文字雲演算法
+    function renderCloud() {
+      const svg = document.getElementById('cloud-svg');
+      const hint = document.getElementById('empty-hint');
+      if (!svg) return;
+      const W = 900, H = 520;
+      const entries = Object.values(words).sort((a, b) => b.count - a.count);
+
+      if (!entries.length) {
+        svg.innerHTML = '';
+        if (hint) hint.style.display = 'flex';
+        return;
+      }
+      if (hint) hint.style.display = 'none';
+
+      const placed = [];
+      function overlaps(r) {
+        for (const p of placed) {
+          const pw = p.w / 2 + r.w / 2 + 12, ph = p.h / 2 + r.h / 2 + 8;
+          if (Math.abs(p.cx - r.cx) < pw && Math.abs(p.cy - r.cy) < ph) return true;
+        }
+        return false;
+      }
+
+      function tryPlace(word, fs) {
+        const estimatedW = word.length * fs * 0.9 + 25;
+        const estimatedH = fs * 1.4;
+        const spiralStep = 0.18;
+        for (let t = 0; t < 1000; t += spiralStep) {
+          const r = t * 3.2;
+          const angle = t;
+          const cx = W / 2 + r * Math.cos(angle);
+          const cy = H / 2 + r * Math.sin(angle) * 0.65;
+          if (cx - estimatedW / 2 < 10 || cx + estimatedW / 2 > W - 10) continue;
+          if (cy - estimatedH / 2 < 10 || cy + estimatedH / 2 > H - 10) continue;
+          const candidate = { cx, cy, w: estimatedW, h: estimatedH };
+          if (!overlaps(candidate)) { placed.push(candidate); return { cx, cy }; }
+        }
+        return null;
+      }
+
+      svg.innerHTML = '';
+      entries.forEach(e => {
+        // 規則：同樣的答案每多重複出現一次，字體加大 5[cite: 1]
+        const fs = 25 + (e.count - 1) * 5;
+
+        const pos = tryPlace(e.original, fs);
+        if (!pos) return;
+
+        const col = wordColor(e.original.toLowerCase());
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', pos.cx);
+        text.setAttribute('y', pos.cy + fs * 0.35);
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('font-size', fs);
+        text.setAttribute('font-weight', e.count > 1 ? '700' : '500');
+        text.setAttribute('fill', col);
+        text.setAttribute('font-family', "'Noto Sans TC', sans-serif");
+        text.style.cursor = 'default';
+        text.style.transition = 'all 0.5s ease';
+        text.textContent = e.original;
+        svg.appendChild(text);
+      });
+    }
+
+    // QR Code 相關
+    let qrBuilt = false;
+    function openQR() {
+      document.getElementById('qr-modal').classList.add('open');
+      if (qrBuilt) return;
+      qrBuilt = true;
+      const submitURL = location.href.split('#')[0] + '#submit';
+      document.getElementById('url-copy-box').textContent = submitURL;
+      const box = document.getElementById('qr-box');
+      box.innerHTML = '';
+      try {
+        new QRCode(box, { text: submitURL, width: 200, height: 200, colorDark: '#000', colorLight: '#fff', correctLevel: QRCode.CorrectLevel.M });
+      } catch (e) {
+        box.textContent = submitURL;
+      }
+    }
+    function closeQR() { document.getElementById('qr-modal').classList.remove('open'); }
+    function copyURL() {
+      const url = location.href.split('#')[0] + '#submit';
+      navigator.clipboard.writeText(url).catch(() => { });
+      const el = document.getElementById('url-copy-box');
+      el.classList.add('copied-flash');
+      el.textContent = '已複製！';
+      setTimeout(() => { el.classList.remove('copied-flash'); el.textContent = url; }, 1800);
+    }
+
+    // 初始化程式
+    (function init() {
+      applyRoute(getRoute());
+      // 因為現在由 Firebase 的 .on('value') 自動監聽更新，不再需要原本的 setInterval(poll, 2000)
+      window.addEventListener('resize', () => { if (getRoute() === 'host') renderCloud(); });
+    })();
+  </script>
+</body>
+
+</html>
